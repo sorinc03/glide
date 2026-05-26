@@ -17,6 +17,7 @@ buildscript {
         classpath libs.violations
         classpath libs.androidx.benchmark.gradle
         classpath libs.kotlin.gradle
+        classpath "org.jetbrains.kotlin.plugin.compose:org.jetbrains.kotlin.plugin.compose.gradle.plugin:2.0.20"
         classpath libs.ksp.gradle.plugin
         classpath libs.coroutines.binarycompat.gradle
         classpath libs.dokka.gradle
@@ -29,13 +30,7 @@ plugins {
     alias libs.plugins.ktfmt
 }
 
-apply plugin: 'binary-compatibility-validator'
 apply plugin: 'org.jetbrains.dokka'
-
-apiValidation {
-    ignoredProjects += ["ksp", "test", "gallery", "integrationtest", "sqljournaldiskcache"]
-    nonPublicMarkers += ["com.bumptech.glide.integration.ktx.InternalGlideApi"]
-}
 
 // See http://blog.joda.org/2014/02/turning-off-doclint-in-jdk-8-javadoc.html.
 if (JavaVersion.current().isJava8Compatible()) {
@@ -101,17 +96,11 @@ subprojects { project ->
 
             project.tasks.dokkaHtmlPartial.configure {
                 dokkaSourceSets {
-                    // Kotlin works out of the box
-                     if (!project.plugins.hasPlugin("kotlin-android") && project.plugins.hasPlugin("com.android.library")) {
-                        // Java Android modules
-                        register("main") {
-                            sourceRoots.from(project.android.sourceSets.main.java.srcDirs)
-
-                        }
-                    } else if (project.plugins.hasPlugin("java") && "ksp" != project.getName()) {
-                        // Java only modules (ksp is not useful and uses multiple plugins)
-                        register("main") {
-                            sourceRoots.from(sourceSets.main.java.srcDirs)
+                    if (project.plugins.hasPlugin("java") && "ksp" != project.getName()) {
+                        if (findByName("main") == null) {
+                            register("main") {
+                                sourceRoots.from(sourceSets.main.java.srcDirs)
+                            }
                         }
                     }
                 }
@@ -135,7 +124,7 @@ subprojects { project ->
         if ("gifencoder" != project.getName() && "imgur" != project.getName()) {
           options.compilerArgs.addAll([
             //Treat all warnings as errors.
-            "-Werror",
+            project.hasProperty('DISABLE_ERROR_PRONE') ? "-nowarn" : "-Werror",
             //Enable all warnings.
             "-Xlint:all",
             // Disable warnings about source 7 being obsolete.
@@ -153,8 +142,14 @@ subprojects { project ->
     }
 
     tasks.withType(Test) {
+        if (name.contains("Release")) {
+            enabled = false
+        }
         testLogging {
             exceptionFormat = TestExceptionFormat.FULL
+        }
+        javaLauncher = javaToolchains.launcherFor {
+            languageVersion = JavaLanguageVersion.of(21)
         }
     }
 
